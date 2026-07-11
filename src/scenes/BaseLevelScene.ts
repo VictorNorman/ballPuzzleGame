@@ -16,6 +16,7 @@ interface PlacedBoard {
 interface PlacedSpring {
   type: 'spring';
   pos: Phaser.Math.Vector2;
+  angle: number;
   body: MatterJS.BodyType;
   capBody: MatterJS.BodyType;
   view: Phaser.GameObjects.Graphics;
@@ -99,7 +100,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private pendingBoardStart: Phaser.Math.Vector2 | null = null;
   private boardPreview?: Phaser.GameObjects.Rectangle;
   private selectionHandles: Phaser.GameObjects.Arc[] = [];
-  private draggingHandle: 'p1' | 'p2' | null = null;
+  private draggingHandle: 'p1' | 'p2' | 'rotate' | null = null;
   private trashHighlighted = false;
 
   private ball!: MatterJS.BodyType;
@@ -240,15 +241,12 @@ export abstract class BaseLevelScene extends Phaser.Scene {
           this.onMiss();
         }
         if (labels.includes('ball') && labels.includes('spring') && this.state === 'rolling') {
-          this.matter.body.setVelocity(this.ball, {
-            x: this.ball.velocity.x,
-            y: -SPRING_LAUNCH_SPEED,
-          });
           const capBody = bodyA.label === 'spring' ? bodyA : bodyB;
           const spring = this.placedElements.find(
             (item): item is PlacedSpring => item.type === 'spring' && item.capBody === capBody
           );
           if (spring) {
+            this.launchBallFromSpring(spring);
             this.playSpringBounce(spring);
           }
         }
@@ -479,7 +477,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       return;
     }
 
-    if (this.selectedElement?.type === 'board') {
+    if (this.selectedElement) {
       const handle = this.findHandleAt(pos, this.selectedElement);
       if (handle) {
         this.draggingHandle = handle;
@@ -517,8 +515,17 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       return;
     }
 
-    if (this.draggingHandle && this.selectedElement?.type === 'board') {
-      this.dragBoardHandle(this.selectedElement, this.draggingHandle, pos);
+    if (this.draggingHandle === 'p1' || this.draggingHandle === 'p2') {
+      if (this.selectedElement?.type === 'board') {
+        this.dragBoardHandle(this.selectedElement, this.draggingHandle, pos);
+      }
+      return;
+    }
+
+    if (this.draggingHandle === 'rotate') {
+      if (this.selectedElement?.type === 'spring') {
+        this.dragSpringHandle(this.selectedElement, pos);
+      }
       return;
     }
 
@@ -598,6 +605,8 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   }
 
   private placeSpring(pos: Phaser.Math.Vector2) {
+    const angle = 0;
+
     // the coil itself is a plain solid obstacle; only the thin cap board on
     // top is labeled 'spring', so the launch only triggers when the ball
     // clearly lands on the board, not when it grazes the coil's sides
@@ -607,7 +616,8 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       label: 'obstacle',
     });
 
-    const capBody = this.matter.add.rectangle(pos.x, this.springCapY(pos.y), SPRING_CAP_WIDTH, SPRING_CAP_THICKNESS, {
+    const capPos = this.springCapPosition(pos, angle);
+    const capBody = this.matter.add.rectangle(capPos.x, capPos.y, SPRING_CAP_WIDTH, SPRING_CAP_THICKNESS, {
       isStatic: true,
       friction: 0.05,
       label: 'spring',
@@ -619,12 +629,38 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     const el: PlacedSpring = {
       type: 'spring',
       pos: pos.clone(),
+      angle,
       body,
       capBody,
       view,
     };
     this.placedElements.push(el);
     this.finishPlacing(el);
+  }
+
+  /** Direction the spring launches toward: straight up (0, -1) at angle 0. */
+  private springDirection(angle: number): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(Math.sin(angle), -Math.cos(angle));
+  }
+
+  /** Perpendicular to springDirection; the axis along which incoming speed is preserved. */
+  private springTangent(angle: number): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+  }
+
+  private angleFromPosToPoint(pos: Phaser.Math.Vector2, point: Phaser.Math.Vector2): number {
+    return Math.atan2(point.x - pos.x, -(point.y - pos.y));
+  }
+
+  private launchBallFromSpring(spring: PlacedSpring) {
+    const dir = this.springDirection(spring.angle);
+    const tangent = this.springTangent(spring.angle);
+    const v = this.ball.velocity;
+    const tangentialSpeed = v.x * tangent.x + v.y * tangent.y;
+    this.matter.body.setVelocity(this.ball, {
+      x: tangent.x * tangentialSpeed + dir.x * SPRING_LAUNCH_SPEED,
+      y: tangent.y * tangentialSpeed + dir.y * SPRING_LAUNCH_SPEED,
+    });
   }
 
   /**
@@ -645,8 +681,32 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.setElementHighlight(el, true);
   }
 
-  private springCapY(centerY: number): number {
-    return centerY - SPRING_HEIGHT / 2 - SPRING_CAP_THICKNESS / 2;
+  private springCapPosition(pos: Phaser.Math.Vector2, angle: number): Phaser.Math.Vector2 {
+    const offset = SPRING_HEIGHT / 2 + SPRING_CAP_THICKNESS / 2;
+    const dir = this.springDirection(angle);
+    return new Phaser.Math.Vector2(pos.x + dir.x * offset, pos.y + dir.y * offset);
+  }
+
+  private rebuildSpringBodies(el: PlacedSpring) {
+    this.matter.world.remove(el.body);
+    this.matter.world.remove(el.capBody);
+
+    el.body = this.matter.add.rectangle(el.pos.x, el.pos.y, SPRING_WIDTH, SPRING_HEIGHT, {
+      isStatic: true,
+      friction: 0.05,
+      label: 'obstacle',
+    });
+    this.matter.body.setAngle(el.body, el.angle);
+
+    const capPos = this.springCapPosition(el.pos, el.angle);
+    el.capBody = this.matter.add.rectangle(capPos.x, capPos.y, SPRING_CAP_WIDTH, SPRING_CAP_THICKNESS, {
+      isStatic: true,
+      friction: 0.05,
+      label: 'spring',
+    });
+    this.matter.body.setAngle(el.capBody, el.angle);
+
+    el.view.setRotation(el.angle);
   }
 
   private drawSpring(view: Phaser.GameObjects.Graphics, color: number) {
@@ -721,16 +781,21 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     if (el.type === 'board') {
       el.view.setFillStyle(on ? BOARD_SELECTED_COLOR : BOARD_COLOR);
       if (on) {
-        this.showHandlesFor(el);
+        this.showHandlesForBoard(el);
       } else {
         this.clearHandles();
       }
     } else {
       this.drawSpring(el.view, on ? SPRING_SELECTED_COLOR : SPRING_COLOR);
+      if (on) {
+        this.showHandleForSpring(el);
+      } else {
+        this.clearHandles();
+      }
     }
   }
 
-  private showHandlesFor(el: PlacedBoard) {
+  private showHandlesForBoard(el: PlacedBoard) {
     this.clearHandles();
     for (const point of [el.p1, el.p2]) {
       this.selectionHandles.push(
@@ -742,9 +807,26 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     }
   }
 
-  private updateHandlePositions(el: PlacedBoard) {
+  private updateBoardHandlePositions(el: PlacedBoard) {
     this.selectionHandles[0]?.setPosition(el.p1.x, el.p1.y);
     this.selectionHandles[1]?.setPosition(el.p2.x, el.p2.y);
+  }
+
+  /** The rotate handle sits at the spring's tip (the cap); dragging it re-aims the launch angle. */
+  private showHandleForSpring(el: PlacedSpring) {
+    this.clearHandles();
+    const tip = this.springCapPosition(el.pos, el.angle);
+    this.selectionHandles.push(
+      this.add
+        .circle(tip.x, tip.y, HANDLE_RADIUS, HANDLE_COLOR)
+        .setStrokeStyle(2, HANDLE_STROKE_COLOR)
+        .setDepth(6)
+    );
+  }
+
+  private updateSpringHandlePosition(el: PlacedSpring) {
+    const tip = this.springCapPosition(el.pos, el.angle);
+    this.selectionHandles[0]?.setPosition(tip.x, tip.y);
   }
 
   private clearHandles() {
@@ -754,12 +836,19 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.selectionHandles = [];
   }
 
-  private findHandleAt(pos: Phaser.Math.Vector2, el: PlacedBoard): 'p1' | 'p2' | null {
-    if (Phaser.Math.Distance.Between(pos.x, pos.y, el.p1.x, el.p1.y) <= HANDLE_HIT_RADIUS) {
-      return 'p1';
+  private findHandleAt(pos: Phaser.Math.Vector2, el: PlacedElement): 'p1' | 'p2' | 'rotate' | null {
+    if (el.type === 'board') {
+      if (Phaser.Math.Distance.Between(pos.x, pos.y, el.p1.x, el.p1.y) <= HANDLE_HIT_RADIUS) {
+        return 'p1';
+      }
+      if (Phaser.Math.Distance.Between(pos.x, pos.y, el.p2.x, el.p2.y) <= HANDLE_HIT_RADIUS) {
+        return 'p2';
+      }
+      return null;
     }
-    if (Phaser.Math.Distance.Between(pos.x, pos.y, el.p2.x, el.p2.y) <= HANDLE_HIT_RADIUS) {
-      return 'p2';
+    const tip = this.springCapPosition(el.pos, el.angle);
+    if (Phaser.Math.Distance.Between(pos.x, pos.y, tip.x, tip.y) <= HANDLE_HIT_RADIUS) {
+      return 'rotate';
     }
     return null;
   }
@@ -771,7 +860,13 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       el.p2 = pos.clone();
     }
     this.rebuildBoardBody(el);
-    this.updateHandlePositions(el);
+    this.updateBoardHandlePositions(el);
+  }
+
+  private dragSpringHandle(el: PlacedSpring, pos: Phaser.Math.Vector2) {
+    el.angle = this.angleFromPosToPoint(el.pos, pos);
+    this.rebuildSpringBodies(el);
+    this.updateSpringHandlePosition(el);
   }
 
   private rebuildBoardBody(el: PlacedBoard) {
@@ -823,7 +918,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
         y: midY,
       });
       this.matter.body.setAngle(el.body, angle);
-      this.updateHandlePositions(el);
+      this.updateBoardHandlePositions(el);
     } else {
       el.pos = this.dragOrigin.pos!.clone().add({
         x: deltaX,
@@ -834,10 +929,12 @@ export abstract class BaseLevelScene extends Phaser.Scene {
         x: el.pos.x,
         y: el.pos.y,
       });
+      const capPos = this.springCapPosition(el.pos, el.angle);
       this.matter.body.setPosition(el.capBody, {
-        x: el.pos.x,
-        y: this.springCapY(el.pos.y),
+        x: capPos.x,
+        y: capPos.y,
       });
+      this.updateSpringHandlePosition(el);
     }
   }
 
