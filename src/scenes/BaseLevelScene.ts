@@ -60,7 +60,11 @@ const HANDLE_COLOR = 0xffffff;
 const HANDLE_STROKE_COLOR = 0x1565c0;
 
 const SPRING_ROTATE_HANDLE_GAP = 8;
-const SPRING_ROTATE_ARROW_SIZE = 4;
+const SPRING_HANDLE_RADIUS = HANDLE_RADIUS * 0.75;
+const SPRING_HANDLE_HIT_RADIUS = HANDLE_HIT_RADIUS * 0.75;
+const SPRING_ROTATE_ARROW_SIZE = 3;
+const SPRING_ROTATE_ARROW_GAP = 2;
+const SPRING_MAX_ROTATION = Math.PI / 3;
 
 const TRASH_X = 48;
 const TRASH_Y = WORLD_HEIGHT - 48;
@@ -824,13 +828,18 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
   /**
    * The rotate handle floats just above the spring's cap; dragging it
-   * re-aims the launch angle. Small left/right arrows flank the handle to
+   * re-aims the launch angle. Small left/right arrows flank the handle,
+   * kept parallel to the cap by matching the spring's own rotation, to
    * hint that it slides sideways rather than lifts off.
    */
   private showHandleForSpring(el: PlacedSpring) {
     this.clearHandles();
     const handlePos = this.springHandlePosition(el.pos, el.angle);
-    const handle = this.add.graphics().setPosition(handlePos.x, handlePos.y).setDepth(6);
+    const handle = this.add
+      .graphics()
+      .setPosition(handlePos.x, handlePos.y)
+      .setRotation(el.angle)
+      .setDepth(6);
     this.drawRotateHandle(handle);
     this.selectionHandles.push(handle);
   }
@@ -838,11 +847,11 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private drawRotateHandle(g: Phaser.GameObjects.Graphics) {
     g.clear();
     g.fillStyle(HANDLE_COLOR, 1);
-    g.fillCircle(0, 0, HANDLE_RADIUS);
+    g.fillCircle(0, 0, SPRING_HANDLE_RADIUS);
     g.lineStyle(2, HANDLE_STROKE_COLOR, 1);
-    g.strokeCircle(0, 0, HANDLE_RADIUS);
+    g.strokeCircle(0, 0, SPRING_HANDLE_RADIUS);
 
-    const arrowX = HANDLE_RADIUS + 3;
+    const arrowX = SPRING_HANDLE_RADIUS + SPRING_ROTATE_ARROW_GAP;
     g.fillStyle(HANDLE_STROKE_COLOR, 1);
     g.fillTriangle(
       -arrowX - SPRING_ROTATE_ARROW_SIZE,
@@ -864,7 +873,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
   private updateSpringHandlePosition(el: PlacedSpring) {
     const handlePos = this.springHandlePosition(el.pos, el.angle);
-    this.selectionHandles[0]?.setPosition(handlePos.x, handlePos.y);
+    this.selectionHandles[0]?.setPosition(handlePos.x, handlePos.y).setRotation(el.angle);
   }
 
   private clearHandles() {
@@ -885,7 +894,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       return null;
     }
     const handlePos = this.springHandlePosition(el.pos, el.angle);
-    if (Phaser.Math.Distance.Between(pos.x, pos.y, handlePos.x, handlePos.y) <= HANDLE_HIT_RADIUS) {
+    if (Phaser.Math.Distance.Between(pos.x, pos.y, handlePos.x, handlePos.y) <= SPRING_HANDLE_HIT_RADIUS) {
       return 'rotate';
     }
     return null;
@@ -902,7 +911,8 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   }
 
   private dragSpringHandle(el: PlacedSpring, pos: Phaser.Math.Vector2) {
-    el.angle = this.angleFromPosToPoint(el.pos, pos);
+    const angle = this.angleFromPosToPoint(el.pos, pos);
+    el.angle = Phaser.Math.Clamp(angle, -SPRING_MAX_ROTATION, SPRING_MAX_ROTATION);
     this.rebuildSpringBodies(el);
     this.updateSpringHandlePosition(el);
   }
