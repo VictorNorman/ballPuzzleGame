@@ -46,7 +46,6 @@ const SPRING_WIDTH = 30;
 const SPRING_HEIGHT = 46;
 const SPRING_COLOR = 0xffa000;
 const SPRING_SELECTED_COLOR = 0xffd54f;
-const SPRING_COIL_COLOR = 0x3e2723;
 const SPRING_LAUNCH_SPEED = 13;
 const SPRING_CAP_WIDTH = SPRING_WIDTH + 10;
 const SPRING_CAP_THICKNESS = 10;
@@ -105,7 +104,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
   private ball!: MatterJS.BodyType;
   private trashCan!: Phaser.GameObjects.Graphics;
-  private ballSprite!: Phaser.GameObjects.Arc;
+  private ballSprite!: Phaser.GameObjects.Graphics;
   private goButton!: Phaser.GameObjects.Text;
   private nextLevelButton?: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
@@ -134,7 +133,6 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
     this.buildCup();
     this.buildKillzone();
-    this.buildStartMarker();
     this.buildTrashCan();
     this.buildObstacles();
 
@@ -246,13 +244,16 @@ export abstract class BaseLevelScene extends Phaser.Scene {
             x: this.ball.velocity.x,
             y: -SPRING_LAUNCH_SPEED,
           });
+          const capBody = bodyA.label === 'spring' ? bodyA : bodyB;
+          const spring = this.placedElements.find(
+            (item): item is PlacedSpring => item.type === 'spring' && item.capBody === capBody
+          );
+          if (spring) {
+            this.playSpringBounce(spring);
+          }
         }
       }
     });
-  }
-
-  private buildStartMarker() {
-    this.add.circle(START.x, START.y, BALL_RADIUS + 6, 0xffffff, 0.25).setDepth(1);
   }
 
   private buildTrashCan() {
@@ -423,7 +424,22 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       label: 'ball',
     });
     this.matter.body.setStatic(this.ball, true);
-    this.ballSprite = this.add.circle(START.x, START.y, BALL_RADIUS, 0xff5252).setDepth(6);
+    this.ballSprite = this.add.graphics().setPosition(START.x, START.y).setDepth(6);
+    this.drawBallGraphic(this.ballSprite);
+  }
+
+  private drawBallGraphic(view: Phaser.GameObjects.Graphics) {
+    view.clear();
+    view.fillStyle(0xff5252, 1);
+    view.fillCircle(0, 0, BALL_RADIUS);
+
+    // diagonal stripe so rotation is visible while it rolls (kept off-axis
+    // so it doesn't read as a "no entry" sign like a horizontal bar would)
+    const stripeWidth = BALL_RADIUS * 1.8;
+    const stripeHeight = 5;
+    view.fillStyle(0x2979ff, 1);
+    view.rotateCanvas(Math.PI / 4);
+    view.fillRect(-stripeWidth / 2, -stripeHeight / 2, stripeWidth, stripeHeight);
   }
 
   update() {
@@ -432,6 +448,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     if (this.ball) {
       const pos = this.ball.position;
       this.ballSprite.setPosition(pos.x, pos.y);
+      this.ballSprite.setRotation(this.ball.angle);
     }
   }
 
@@ -634,10 +651,9 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
   private drawSpring(view: Phaser.GameObjects.Graphics, color: number) {
     view.clear();
-    view.fillStyle(color, 1);
-    view.fillRect(-SPRING_WIDTH / 2, -SPRING_HEIGHT / 2, SPRING_WIDTH, SPRING_HEIGHT);
 
-    view.lineStyle(3, SPRING_COIL_COLOR, 1);
+    // no background fill: the coil sits on a transparent backdrop
+    view.lineStyle(3, color, 1);
     view.beginPath();
     const coils = 4;
     for (let i = 0; i <= coils; i++) {
@@ -654,6 +670,35 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     // thin board cap: the ball must land here to bounce
     view.fillStyle(SPRING_CAP_COLOR, 1);
     view.fillRect(-SPRING_CAP_WIDTH / 2, -SPRING_HEIGHT / 2 - SPRING_CAP_THICKNESS, SPRING_CAP_WIDTH, SPRING_CAP_THICKNESS);
+  }
+
+  /**
+   * Squashes the spring's graphic toward its fixed base and springs it back,
+   * so the coil visibly compresses at the moment the ball lands on it.
+   */
+  private playSpringBounce(el: PlacedSpring) {
+    const view = el.view;
+    const baseY = el.pos.y + SPRING_HEIGHT / 2;
+
+    this.tweens.killTweensOf(view);
+    view.setScale(1, 1);
+    view.y = el.pos.y;
+
+    this.tweens.add({
+      targets: view,
+      scaleX: 1.2,
+      scaleY: 0.5,
+      duration: 90,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+      onUpdate: () => {
+        view.y = baseY - (SPRING_HEIGHT / 2) * view.scaleY;
+      },
+      onComplete: () => {
+        view.setScale(1, 1);
+        view.y = el.pos.y;
+      },
+    });
   }
 
   private findElementAt(pos: Phaser.Math.Vector2): PlacedElement | null {
@@ -838,6 +883,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       y: 0,
     });
     this.matter.body.setAngularVelocity(this.ball, 0);
+    this.matter.body.setAngle(this.ball, 0);
     this.goButton.setVisible(true);
     this.messageText.setText('Missed! Adjust your pieces and try again, or press Reset to start over.').setVisible(true);
     this.instructionsText.setText(this.instructionsForTool());
