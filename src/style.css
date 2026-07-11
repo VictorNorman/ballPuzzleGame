@@ -1,0 +1,97 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1a2e;
+  font: 16px/1.4 system-ui, sans-serif;
+  color: #e8e8f0;
+}
+
+#game-layout {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+#app {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#app canvas {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#controls label {
+  font-size: 14px;
+  letter-spacing: 0.03em;
+}
+
+#tool-palette {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: #2a2a42;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tool-button:hover:not(:disabled) {
+  background: #33334f;
+}
+
+.tool-button.active {
+  border-color: #4fa3ff;
+  background: #1565c0;
+}
+
+.tool-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#gravity-slider {
+  width: 32px;
+  height: 260px;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: #4fa3ff;
+}
+
+#gravity-value {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #a8b3c7;
+}
