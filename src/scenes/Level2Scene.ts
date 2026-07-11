@@ -8,7 +8,7 @@ const BLOCK = {
 
 export class Level2Scene extends BaseLevelScene {
   protected readonly levelLabel = 'Level 2';
-  protected readonly nextLevelKey = null;
+  protected readonly nextLevelKey = 'Level3';
 
   constructor() {
     super('Level2');
