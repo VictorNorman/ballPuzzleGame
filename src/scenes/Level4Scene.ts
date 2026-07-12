@@ -1,4 +1,9 @@
-import { BaseLevelScene, WORLD_HEIGHT } from './BaseLevelScene';
+import { BaseLevelScene, PORTAL_RADIUS, WORLD_HEIGHT } from './BaseLevelScene';
+
+// half the cup's rim width (topWidth / 2 in buildCup), used to sit the
+// portal just clear of the cup's rim rather than overlapping it
+const CUP_RIM_HALF_WIDTH = 45;
+const PORTAL_GAP = 8;
 
 export class Level4Scene extends BaseLevelScene {
   protected readonly levelLabel = 'Level 4';
@@ -14,5 +19,12 @@ export class Level4Scene extends BaseLevelScene {
 
   constructor() {
     super('Level4');
+  }
+
+  protected buildObstacles() {
+    this.buildPortal({
+      x: this.cup.x + CUP_RIM_HALF_WIDTH + PORTAL_RADIUS + PORTAL_GAP,
+      y: this.cup.y - 30,
+    });
   }
 }

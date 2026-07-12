@@ -89,6 +89,11 @@ const TRASH_HIT_RADIUS = 30;
 const TRASH_COLOR = 0x455a64;
 const TRASH_HIGHLIGHT_COLOR = 0xd32f2f;
 
+export const PORTAL_RADIUS = 16;
+const PORTAL_FILL_COLOR = 0x000000;
+const PORTAL_STROKE_COLOR = 0xd32f2f;
+const PORTAL_STROKE_WIDTH = 3;
+
 function distanceToSegment(
   p: Phaser.Math.Vector2,
   a: Phaser.Math.Vector2,
@@ -278,6 +283,9 @@ export abstract class BaseLevelScene extends Phaser.Scene {
         if (labels.includes('ball') && labels.includes('killzone')) {
           this.onMiss();
         }
+        if (labels.includes('ball') && labels.includes('portal') && this.state === 'rolling') {
+          this.onPortal();
+        }
         if (labels.includes('ball') && labels.includes('spring') && this.state === 'rolling') {
           const capBody = bodyA.label === 'spring' ? bodyA : bodyB;
           const spring = this.placedElements.find(
@@ -460,6 +468,16 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       isSensor: true,
       label: 'killzone',
     });
+  }
+
+  /** A static warp point: touching it instantly sends the ball back to the start, mid-roll. */
+  protected buildPortal(pos: { x: number; y: number }) {
+    this.matter.add.circle(pos.x, pos.y, PORTAL_RADIUS, {
+      isStatic: true,
+      isSensor: true,
+      label: 'portal',
+    });
+    this.add.circle(pos.x, pos.y, PORTAL_RADIUS, PORTAL_FILL_COLOR).setStrokeStyle(PORTAL_STROKE_WIDTH, PORTAL_STROKE_COLOR).setDepth(3);
   }
 
   private spawnBall() {
@@ -1223,6 +1241,21 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.instructionsText.setText(this.instructionsForTool());
     setGravitySliderEnabled(true);
     setToolPaletteEnabled(true);
+  }
+
+  /** Instantly warps the ball back to the start without interrupting the roll. */
+  private onPortal() {
+    this.matter.body.setPosition(this.ball, {
+      x: this.start.x,
+      y: this.start.y,
+    });
+    this.matter.body.setVelocity(this.ball, {
+      x: 0,
+      y: 0,
+    });
+    this.matter.body.setAngularVelocity(this.ball, 0);
+    this.matter.body.setAngle(this.ball, 0);
+    this.stopRollSound();
   }
 
   private resetLevel() {
