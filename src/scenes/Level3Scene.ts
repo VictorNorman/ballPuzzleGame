@@ -3,12 +3,12 @@ import { BaseLevelScene, WORLD_HEIGHT } from './BaseLevelScene';
 const WALLS = [
   {
     x: 300,
-    top: 220,
+    top: 380,
     width: 60,
   },
   {
     x: 560,
-    top: 380,
+    top: 220,
     width: 60,
   },
 ];
