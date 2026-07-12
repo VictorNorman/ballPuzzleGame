@@ -25,7 +25,16 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [Level1Scene, Level2Scene, Level3Scene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+const levelSelect = document.querySelector<HTMLSelectElement>('#level-select')!;
+
+levelSelect.addEventListener('change', () => {
+  for (const scene of game.scene.getScenes(true)) {
+    game.scene.stop(scene.scene.key);
+  }
+  game.scene.start(levelSelect.value);
+});
 
 const gravitySlider = document.querySelector<HTMLInputElement>('#gravity-slider')!;
 const gravityValue = document.querySelector<HTMLOutputElement>('#gravity-value')!;
