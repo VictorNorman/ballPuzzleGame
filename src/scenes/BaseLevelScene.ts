@@ -58,8 +58,10 @@ const SPRING_ROTATE_ARROW_SIZE = 3;
 const SPRING_ROTATE_ARROW_GAP = 2;
 const SPRING_MAX_ROTATION = Math.PI / 3;
 
-const TRASH_X = 48;
-const TRASH_Y = WORLD_HEIGHT - 48;
+// centered so the icon's edges sit at the same 20px/16px margin used by
+// the level label and Reset button (icon is 34px wide, 26px tall body)
+const TRASH_X = 20 + 17;
+const TRASH_Y = WORLD_HEIGHT - 16 - 13;
 const TRASH_HIT_RADIUS = 30;
 const TRASH_COLOR = 0x455a64;
 const TRASH_HIGHLIGHT_COLOR = 0xd32f2f;
