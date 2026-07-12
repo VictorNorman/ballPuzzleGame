@@ -74,6 +74,13 @@ const SPRING_ROTATE_ARROW_SIZE = 3;
 const SPRING_ROTATE_ARROW_GAP = 2;
 const SPRING_MAX_ROTATION = Math.PI / 3;
 
+const ROLL_SOUND_MIN_SPEED = 0.3;
+const ROLL_SOUND_MAX_SPEED = 15;
+const ROLL_SOUND_MIN_FREQ = 70;
+const ROLL_SOUND_MAX_FREQ = 260;
+const ROLL_SOUND_MIN_GAIN = 0.02;
+const ROLL_SOUND_MAX_GAIN = 0.18;
+
 // centered so the icon's edges sit at the same 20px/16px margin used by
 // the level label and Reset button (icon is 34px wide, 26px tall body)
 const TRASH_X = 20 + 17;
@@ -136,6 +143,11 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private nextLevelButton?: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private instructionsText!: Phaser.GameObjects.Text;
+
+  private ballOnBoardThisStep = false;
+  private isRollSoundActive = false;
+  private rollOscillator?: OscillatorNode;
+  private rollGain?: GainNode;
 
   /** Override to add level-specific static obstacles (called once from create()). */
   protected buildObstacles(): void {}
@@ -276,6 +288,20 @@ export abstract class BaseLevelScene extends Phaser.Scene {
             this.playSpringBounce(spring);
             this.playSpringSound();
           }
+        }
+      }
+    });
+
+    this.matter.world.on('collisionactive', (event: MatterJS.IEventCollision<MatterJS.Engine>) => {
+      if (this.state !== 'rolling') {
+        return;
+      }
+      for (const pair of event.pairs) {
+        const bodyA = pair.bodyA as unknown as MatterJS.BodyType;
+        const bodyB = pair.bodyB as unknown as MatterJS.BodyType;
+        const labels = [bodyA.label, bodyB.label];
+        if (labels.includes('ball') && labels.includes('board')) {
+          this.ballOnBoardThisStep = true;
         }
       }
     });
@@ -475,7 +501,19 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       const pos = this.ball.position;
       this.ballSprite.setPosition(pos.x, pos.y);
       this.ballSprite.setRotation(this.ball.angle);
+
+      if (this.ballOnBoardThisStep) {
+        const speed = Math.hypot(this.ball.velocity.x, this.ball.velocity.y);
+        if (!this.isRollSoundActive) {
+          this.startRollSound();
+          this.isRollSoundActive = true;
+        }
+        this.updateRollSound(speed);
+      } else if (this.isRollSoundActive) {
+        this.stopRollSound();
+      }
     }
+    this.ballOnBoardThisStep = false;
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer) {
@@ -874,6 +912,54 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     osc.stop(now + duration);
   }
 
+  /** Starts the sustained rumble played while the ball is rolling on a board. */
+  private startRollSound() {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = ROLL_SOUND_MIN_FREQ;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+
+    this.rollOscillator = osc;
+    this.rollGain = gain;
+  }
+
+  /** Re-pitches and re-levels the rolling rumble to track the ball's current speed. */
+  private updateRollSound(speed: number) {
+    if (!this.rollOscillator || !this.rollGain) {
+      return;
+    }
+    const t = Phaser.Math.Clamp(
+      (speed - ROLL_SOUND_MIN_SPEED) / (ROLL_SOUND_MAX_SPEED - ROLL_SOUND_MIN_SPEED),
+      0,
+      1
+    );
+    const freq = Phaser.Math.Linear(ROLL_SOUND_MIN_FREQ, ROLL_SOUND_MAX_FREQ, t);
+    const gainLevel = speed < ROLL_SOUND_MIN_SPEED ? 0 : Phaser.Math.Linear(ROLL_SOUND_MIN_GAIN, ROLL_SOUND_MAX_GAIN, t);
+
+    const now = getAudioContext().currentTime;
+    this.rollOscillator.frequency.setTargetAtTime(freq, now, 0.05);
+    this.rollGain.gain.setTargetAtTime(gainLevel, now, 0.05);
+  }
+
+  private stopRollSound() {
+    this.isRollSoundActive = false;
+    if (!this.rollOscillator || !this.rollGain) {
+      return;
+    }
+    const now = getAudioContext().currentTime;
+    this.rollGain.gain.setTargetAtTime(0, now, 0.05);
+    this.rollOscillator.stop(now + 0.2);
+    this.rollOscillator = undefined;
+    this.rollGain = undefined;
+  }
+
   private findElementAt(pos: Phaser.Math.Vector2): PlacedElement | null {
     for (let i = this.placedElements.length - 1; i >= 0; i--) {
       const el = this.placedElements[i];
@@ -1105,6 +1191,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       return;
     }
     this.state = 'won';
+    this.stopRollSound();
     this.messageText.setText('Solved!').setVisible(true);
     this.instructionsText.setText(
       this.nextLevelKey ? 'Solved! Press Next Level to continue.' : 'Solved! Press Reset to play again.'
@@ -1118,6 +1205,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       return;
     }
     this.state = 'placing';
+    this.stopRollSound();
     this.matter.body.setStatic(this.ball, true);
     this.matter.body.setPosition(this.ball, {
       x: this.start.x,
@@ -1140,6 +1228,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.cancelPendingBoard();
     this.clearSelection();
     this.clearToolHoverPreview();
+    this.stopRollSound();
     this.activeTool = null;
     setActiveToolButton(null);
 
