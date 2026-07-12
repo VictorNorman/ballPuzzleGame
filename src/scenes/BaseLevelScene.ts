@@ -3,6 +3,20 @@ import { physicsSettings, setGravitySliderEnabled } from '../physicsSettings';
 import type { ToolType } from '../toolSettings';
 import { setActiveToolButton, setToolPaletteEnabled, setToolSelectHandler } from '../toolSettings';
 
+// shared across all level instances so switching/resetting levels doesn't
+// leak a new AudioContext (browsers cap how many can be created)
+let sharedAudioContext: AudioContext | null = null;
+
+function getAudioContext(): AudioContext {
+  if (!sharedAudioContext) {
+    sharedAudioContext = new AudioContext();
+  }
+  if (sharedAudioContext.state === 'suspended') {
+    sharedAudioContext.resume();
+  }
+  return sharedAudioContext;
+}
+
 type GameState = 'placing' | 'rolling' | 'won';
 
 interface PlacedBoard {
@@ -260,6 +274,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
           if (spring) {
             this.launchBallFromSpring(spring);
             this.playSpringBounce(spring);
+            this.playSpringSound();
           }
         }
       }
@@ -825,6 +840,38 @@ export abstract class BaseLevelScene extends Phaser.Scene {
         view.y = el.pos.y;
       },
     });
+  }
+
+  /** Synthesizes a short "sproing" — a falling pitch with a decaying wobble on top. */
+  private playSpringSound() {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const duration = 0.25;
+
+    const sampleRate = 200;
+    const sampleCount = Math.ceil(duration * sampleRate);
+    const curve = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      const progress = i / (sampleCount - 1);
+      const basePitch = 500 - progress * 250;
+      const wobbleFreq = 18 - progress * 10;
+      const wobbleDepth = 120 * (1 - progress);
+      curve[i] = basePitch + Math.sin(progress * duration * wobbleFreq * Math.PI * 2) * wobbleDepth;
+    }
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueCurveAtTime(curve, now, duration);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration);
   }
 
   private findElementAt(pos: Phaser.Math.Vector2): PlacedElement | null {
