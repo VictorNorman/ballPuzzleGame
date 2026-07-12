@@ -1179,6 +1179,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.cancelPendingBoard();
     this.clearSelection();
     this.clearToolHoverPreview();
+    this.messageText.setVisible(false);
     this.goButton.setVisible(false);
     this.instructionsText.setText('Rolling...');
     this.matter.body.setStatic(this.ball, false);
