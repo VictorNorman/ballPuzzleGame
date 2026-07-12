@@ -34,6 +34,8 @@ const BOARD_MIN_LENGTH = 24;
 const BOARD_COLOR = 0x6d4c41;
 const BOARD_SELECTED_COLOR = 0x8d6e63;
 const BOARD_PREVIEW_COLOR = 0x8d6e63;
+const BOARD_HOVER_PREVIEW_LENGTH = 70;
+const TOOL_HOVER_ALPHA = 0.5;
 
 const SPRING_WIDTH = 30;
 const SPRING_HEIGHT = 46;
@@ -108,6 +110,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   } = {};
   private pendingBoardStart: Phaser.Math.Vector2 | null = null;
   private boardPreview?: Phaser.GameObjects.Rectangle;
+  private toolHoverPreview?: Phaser.GameObjects.Graphics;
   private selectionHandles: (Phaser.GameObjects.Arc | Phaser.GameObjects.Graphics)[] = [];
   private draggingHandle: 'p1' | 'p2' | 'rotate' | null = null;
   private trashHighlighted = false;
@@ -344,6 +347,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.messageText.setVisible(false);
     this.cancelPendingBoard();
     this.clearSelection();
+    this.clearToolHoverPreview();
     this.activeTool = this.activeTool === tool ? null : tool;
     setActiveToolButton(this.activeTool);
     this.instructionsText.setText(this.instructionsForTool());
@@ -519,6 +523,12 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     }
     const pos = new Phaser.Math.Vector2(pointer.x, pointer.y);
 
+    if (pointer.y < PLACEMENT_AREA_TOP) {
+      this.clearToolHoverPreview();
+    } else {
+      this.updateToolHoverPreview(pos);
+    }
+
     if (this.activeTool === 'board' && this.pendingBoardStart) {
       this.updateBoardPreview(this.pendingBoardStart, pos);
       return;
@@ -573,6 +583,45 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private clearBoardPreview() {
     this.boardPreview?.destroy();
     this.boardPreview = undefined;
+  }
+
+  /**
+   * Ghost of the selected tool that follows the cursor before the first
+   * click: a spring for the spring tool, or a default-length segment for
+   * the board tool (which switches to the anchor-to-cursor boardPreview
+   * once its first endpoint is placed).
+   */
+  private updateToolHoverPreview(pos: Phaser.Math.Vector2) {
+    const showSpring = this.activeTool === 'spring';
+    const showBoard = this.activeTool === 'board' && !this.pendingBoardStart;
+    if (!showSpring && !showBoard) {
+      this.clearToolHoverPreview();
+      return;
+    }
+
+    if (!this.toolHoverPreview) {
+      this.toolHoverPreview = this.add.graphics().setDepth(4).setAlpha(TOOL_HOVER_ALPHA);
+    }
+    const view = this.toolHoverPreview;
+    view.setPosition(pos.x, pos.y).setRotation(0);
+    view.clear();
+
+    if (showSpring) {
+      this.drawSpring(view, SPRING_COLOR);
+    } else {
+      view.fillStyle(BOARD_PREVIEW_COLOR, 1);
+      view.fillRect(
+        -BOARD_HOVER_PREVIEW_LENGTH / 2,
+        -BOARD_THICKNESS / 2,
+        BOARD_HOVER_PREVIEW_LENGTH,
+        BOARD_THICKNESS
+      );
+    }
+  }
+
+  private clearToolHoverPreview() {
+    this.toolHoverPreview?.destroy();
+    this.toolHoverPreview = undefined;
   }
 
   private cancelPendingBoard() {
@@ -680,6 +729,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private finishPlacing(el: PlacedElement) {
     this.activeTool = null;
     setActiveToolButton(null);
+    this.clearToolHoverPreview();
     this.selectElement(el);
     this.instructionsText.setText(this.instructionsForTool());
   }
@@ -995,6 +1045,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.state = 'rolling';
     this.cancelPendingBoard();
     this.clearSelection();
+    this.clearToolHoverPreview();
     this.goButton.setVisible(false);
     this.instructionsText.setText('Rolling...');
     this.matter.body.setStatic(this.ball, false);
@@ -1041,6 +1092,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
   private resetLevel() {
     this.cancelPendingBoard();
     this.clearSelection();
+    this.clearToolHoverPreview();
     this.activeTool = null;
     setActiveToolButton(null);
 
