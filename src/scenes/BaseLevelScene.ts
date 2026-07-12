@@ -28,14 +28,6 @@ const BALL_RADIUS = 12;
 const PLACEMENT_AREA_TOP = 60;
 export const WORLD_WIDTH = 900;
 export const WORLD_HEIGHT = 600;
-export const START = {
-  x: 90,
-  y: 100,
-};
-export const CUP = {
-  x: 780,
-  y: 540,
-};
 
 const BOARD_THICKNESS = 14;
 const BOARD_MIN_LENGTH = 24;
@@ -92,6 +84,14 @@ function distanceToSegment(
 export abstract class BaseLevelScene extends Phaser.Scene {
   protected abstract readonly levelLabel: string;
   protected abstract readonly nextLevelKey: string | null;
+  protected readonly start: { x: number; y: number } = {
+    x: 90,
+    y: 100,
+  };
+  protected readonly cup: { x: number; y: number } = {
+    x: 780,
+    y: 540,
+  };
 
   private state: GameState = 'placing';
   private activeTool: ToolType | null = null;
@@ -362,18 +362,18 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     const bottomWidth = 50;
     const topWidth = 90;
     const cupHeight = 60;
-    const bottomY = CUP.y;
-    const topY = CUP.y - cupHeight;
+    const bottomY = this.cup.y;
+    const topY = this.cup.y - cupHeight;
 
     // sides lean outward from the narrow bottom to the wide rim
     const walls: Array<[Phaser.Math.Vector2, Phaser.Math.Vector2]> = [
       [
-        new Phaser.Math.Vector2(CUP.x - bottomWidth / 2, bottomY),
-        new Phaser.Math.Vector2(CUP.x - topWidth / 2, topY),
+        new Phaser.Math.Vector2(this.cup.x - bottomWidth / 2, bottomY),
+        new Phaser.Math.Vector2(this.cup.x - topWidth / 2, topY),
       ],
       [
-        new Phaser.Math.Vector2(CUP.x + bottomWidth / 2, bottomY),
-        new Phaser.Math.Vector2(CUP.x + topWidth / 2, topY),
+        new Phaser.Math.Vector2(this.cup.x + bottomWidth / 2, bottomY),
+        new Phaser.Math.Vector2(this.cup.x + topWidth / 2, topY),
       ],
     ];
 
@@ -393,14 +393,14 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     }
 
     // bottom, flat and resting at the lowest point of the cup
-    this.matter.add.rectangle(CUP.x, bottomY, bottomWidth + wallThickness, wallThickness, {
+    this.matter.add.rectangle(this.cup.x, bottomY, bottomWidth + wallThickness, wallThickness, {
       isStatic: true,
       label: 'cupWall',
     });
-    this.add.rectangle(CUP.x, bottomY, bottomWidth + wallThickness, wallThickness, 0x5d4037).setDepth(2);
+    this.add.rectangle(this.cup.x, bottomY, bottomWidth + wallThickness, wallThickness, 0x5d4037).setDepth(2);
 
     // win sensor, sits just above the bottom of the cup
-    this.matter.add.rectangle(CUP.x, bottomY - 12, bottomWidth - 10, 16, {
+    this.matter.add.rectangle(this.cup.x, bottomY - 12, bottomWidth - 10, 16, {
       isStatic: true,
       isSensor: true,
       label: 'cupSensor',
@@ -421,7 +421,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     // setStatic() is called as a separate step after creation. A body
     // born static has no snapshot, so releasing it later leaves mass at
     // Infinity forever and the next physics step produces NaN velocity.
-    this.ball = this.matter.add.circle(START.x, START.y, BALL_RADIUS, {
+    this.ball = this.matter.add.circle(this.start.x, this.start.y, BALL_RADIUS, {
       restitution: 0.15,
       friction: 0.04,
       frictionAir: 0.0008,
@@ -429,7 +429,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       label: 'ball',
     });
     this.matter.body.setStatic(this.ball, true);
-    this.ballSprite = this.add.graphics().setPosition(START.x, START.y).setDepth(6);
+    this.ballSprite = this.add.graphics().setPosition(this.start.x, this.start.y).setDepth(6);
     this.drawBallGraphic(this.ballSprite);
   }
 
@@ -1020,8 +1020,8 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     this.state = 'placing';
     this.matter.body.setStatic(this.ball, true);
     this.matter.body.setPosition(this.ball, {
-      x: START.x,
-      y: START.y,
+      x: this.start.x,
+      y: this.start.y,
     });
     this.matter.body.setVelocity(this.ball, {
       x: 0,

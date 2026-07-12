@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { Level1Scene } from './scenes/Level1Scene';
 import { Level2Scene } from './scenes/Level2Scene';
 import { Level3Scene } from './scenes/Level3Scene';
+import { Level4Scene } from './scenes/Level4Scene';
 import { physicsSettings } from './physicsSettings';
 import { toolSettings } from './toolSettings';
 
@@ -22,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [Level1Scene, Level2Scene, Level3Scene],
+  scene: [Level1Scene, Level2Scene, Level3Scene, Level4Scene],
 };
 
 const game = new Phaser.Game(config);

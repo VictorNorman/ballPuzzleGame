@@ -15,7 +15,7 @@ const WALLS = [
 
 export class Level3Scene extends BaseLevelScene {
   protected readonly levelLabel = 'Level 3';
-  protected readonly nextLevelKey = null;
+  protected readonly nextLevelKey = 'Level4';
 
   constructor() {
     super('Level3');
