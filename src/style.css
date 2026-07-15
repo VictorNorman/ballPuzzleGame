@@ -117,3 +117,50 @@ body {
   font-variant-numeric: tabular-nums;
   color: #a8b3c7;
 }
+
+#game-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  width: 90px;
+}
+
+.game-button {
+  width: 100%;
+  padding: 10px 0;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: #2a2a42;
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.game-button:hover:not(:disabled) {
+  background: #33334f;
+}
+
+.game-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#go-button {
+  background: #2e7d32;
+}
+
+#go-button:hover:not(:disabled) {
+  background: #388e3c;
+}
+
+#stop-button {
+  background: #c62828;
+}
+
+#stop-button:hover:not(:disabled) {
+  background: #d32f2f;
+}

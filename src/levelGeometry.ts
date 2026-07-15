@@ -1,13 +1,24 @@
 import Phaser from 'phaser';
-import { WORLD_WIDTH } from './BaseLevelScene';
+import { WORLD_WIDTH } from './worldConstants';
 
 export const PORTAL_RADIUS = 16;
 const PORTAL_FILL_COLOR = 0x000000;
 const PORTAL_STROKE_COLOR = 0xd32f2f;
 const PORTAL_STROKE_WIDTH = 3;
 
+const CUP_WALL_THICKNESS = 10;
+
+/** Where a won ball should settle: centered and resting on the cup's floor. */
+export function cupRestPosition(cup: { x: number; y: number }, ballRadius: number): { x: number; y: number } {
+  const floorTopY = cup.y - CUP_WALL_THICKNESS / 2;
+  return {
+    x: cup.x,
+    y: floorTopY - ballRadius,
+  };
+}
+
 export function buildCup(scene: Phaser.Scene, cup: { x: number; y: number }): void {
-  const wallThickness = 10;
+  const wallThickness = CUP_WALL_THICKNESS;
   const bottomWidth = 50;
   const topWidth = 90;
   const cupHeight = 60;

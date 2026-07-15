@@ -104,4 +104,76 @@ export class BallSoundPlayer {
     this.rollOscillator = undefined;
     this.rollGain = undefined;
   }
+
+  /** Plays a bright three-note "ding ding ding" chime when a level is solved. */
+  playWinSound() {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const notes = [784, 988, 1175]; // G5, B5, D6 - ascending major triad
+    const gap = 0.16;
+    notes.forEach((freq, i) => this.playDing(ctx, now + i * gap, freq));
+  }
+
+  /** A single bell-like chime: a sine fundamental plus a faint high overtone. */
+  private playDing(ctx: AudioContext, startTime: number, freq: number) {
+    const duration = 0.4;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+
+    // a faint high partial is what reads as "bell" rather than a plain tone
+    const overtone = ctx.createOscillator();
+    overtone.type = 'sine';
+    overtone.frequency.value = freq * 2.01;
+
+    const overtoneGain = ctx.createGain();
+    overtoneGain.gain.setValueAtTime(0, startTime);
+    overtoneGain.gain.linearRampToValueAtTime(0.08, startTime + 0.01);
+    overtoneGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration * 0.75);
+
+    overtone.connect(overtoneGain);
+    overtoneGain.connect(ctx.destination);
+    overtone.start(startTime);
+    overtone.stop(startTime + duration * 0.75);
+  }
+
+  /** Plays a slow, descending "womp womp womp" for a missed attempt. */
+  playMissSound() {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const notes = [392, 330, 262]; // G4, E4, C4 - descending
+    const gap = 0.22;
+    notes.forEach((freq, i) => this.playWomp(ctx, now + i * gap, freq));
+  }
+
+  /** A single muted "womp": a triangle tone that sags slightly in pitch as it fades. */
+  private playWomp(ctx: AudioContext, startTime: number, freq: number) {
+    const duration = 0.3;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, startTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.85, startTime + duration);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.22, startTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  }
 }
