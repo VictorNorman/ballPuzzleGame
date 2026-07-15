@@ -1,21 +1,11 @@
 import Phaser from 'phaser';
+import { BallSoundPlayer } from '../audio';
 import { physicsSettings, setGravitySliderEnabled } from '../physicsSettings';
 import type { ToolType } from '../toolSettings';
 import { setActiveToolButton, setToolPaletteEnabled, setToolSelectHandler } from '../toolSettings';
+import { buildCup, buildKillzone, buildPortal } from './levelGeometry';
 
-// shared across all level instances so switching/resetting levels doesn't
-// leak a new AudioContext (browsers cap how many can be created)
-let sharedAudioContext: AudioContext | null = null;
-
-function getAudioContext(): AudioContext {
-  if (!sharedAudioContext) {
-    sharedAudioContext = new AudioContext();
-  }
-  if (sharedAudioContext.state === 'suspended') {
-    sharedAudioContext.resume();
-  }
-  return sharedAudioContext;
-}
+export { PORTAL_RADIUS } from './levelGeometry';
 
 type GameState = 'placing' | 'rolling' | 'won';
 
@@ -74,13 +64,6 @@ const SPRING_ROTATE_ARROW_SIZE = 3;
 const SPRING_ROTATE_ARROW_GAP = 2;
 const SPRING_MAX_ROTATION = Math.PI / 3;
 
-const ROLL_SOUND_MIN_SPEED = 0.3;
-const ROLL_SOUND_MAX_SPEED = 15;
-const ROLL_SOUND_MIN_FREQ = 70;
-const ROLL_SOUND_MAX_FREQ = 260;
-const ROLL_SOUND_MIN_GAIN = 0.02;
-const ROLL_SOUND_MAX_GAIN = 0.18;
-
 // centered so the icon's edges sit at the same 20px/16px margin used by
 // the level label and Reset button (icon is 34px wide, 26px tall body)
 const TRASH_X = 20 + 17;
@@ -88,11 +71,6 @@ const TRASH_Y = WORLD_HEIGHT - 16 - 13;
 const TRASH_HIT_RADIUS = 30;
 const TRASH_COLOR = 0x455a64;
 const TRASH_HIGHLIGHT_COLOR = 0xd32f2f;
-
-export const PORTAL_RADIUS = 16;
-const PORTAL_FILL_COLOR = 0x000000;
-const PORTAL_STROKE_COLOR = 0xd32f2f;
-const PORTAL_STROKE_WIDTH = 3;
 
 function distanceToSegment(
   p: Phaser.Math.Vector2,
@@ -151,8 +129,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
 
   private ballOnBoardThisStep = false;
   private isRollSoundActive = false;
-  private rollOscillator?: OscillatorNode;
-  private rollGain?: GainNode;
+  private soundPlayer = new BallSoundPlayer();
 
   /** Override to add level-specific static obstacles (called once from create()). */
   protected buildObstacles(): void {}
@@ -175,8 +152,8 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       })
       .setDepth(10);
 
-    this.buildCup();
-    this.buildKillzone();
+    buildCup(this, this.cup);
+    buildKillzone(this);
     this.buildTrashCan();
     this.buildObstacles();
 
@@ -294,7 +271,7 @@ export abstract class BaseLevelScene extends Phaser.Scene {
           if (spring) {
             this.launchBallFromSpring(spring);
             this.playSpringBounce(spring);
-            this.playSpringSound();
+            this.soundPlayer.playSpringSound();
           }
         }
       }
@@ -412,72 +389,9 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     return 'Pick a piece to place, or drag a placed piece to move it. Press Go when ready.';
   }
 
-  private buildCup() {
-    const wallThickness = 10;
-    const bottomWidth = 50;
-    const topWidth = 90;
-    const cupHeight = 60;
-    const bottomY = this.cup.y;
-    const topY = this.cup.y - cupHeight;
-
-    // sides lean outward from the narrow bottom to the wide rim
-    const walls: Array<[Phaser.Math.Vector2, Phaser.Math.Vector2]> = [
-      [
-        new Phaser.Math.Vector2(this.cup.x - bottomWidth / 2, bottomY),
-        new Phaser.Math.Vector2(this.cup.x - topWidth / 2, topY),
-      ],
-      [
-        new Phaser.Math.Vector2(this.cup.x + bottomWidth / 2, bottomY),
-        new Phaser.Math.Vector2(this.cup.x + topWidth / 2, topY),
-      ],
-    ];
-
-    for (const [from, to] of walls) {
-      const length = Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y);
-      const angle = Phaser.Math.Angle.Between(from.x, from.y, to.x, to.y);
-      const midX = (from.x + to.x) / 2;
-      const midY = (from.y + to.y) / 2;
-
-      const body = this.matter.add.rectangle(midX, midY, length, wallThickness, {
-        isStatic: true,
-        label: 'cupWall',
-      });
-      this.matter.body.setAngle(body, angle);
-
-      this.add.rectangle(midX, midY, length, wallThickness, 0x5d4037).setRotation(angle).setDepth(2);
-    }
-
-    // bottom, flat and resting at the lowest point of the cup
-    this.matter.add.rectangle(this.cup.x, bottomY, bottomWidth + wallThickness, wallThickness, {
-      isStatic: true,
-      label: 'cupWall',
-    });
-    this.add.rectangle(this.cup.x, bottomY, bottomWidth + wallThickness, wallThickness, 0x5d4037).setDepth(2);
-
-    // win sensor, sits just above the bottom of the cup
-    this.matter.add.rectangle(this.cup.x, bottomY - 12, bottomWidth - 10, 16, {
-      isStatic: true,
-      isSensor: true,
-      label: 'cupSensor',
-    });
-  }
-
-  private buildKillzone() {
-    this.matter.add.rectangle(WORLD_WIDTH / 2, 640, WORLD_WIDTH, 20, {
-      isStatic: true,
-      isSensor: true,
-      label: 'killzone',
-    });
-  }
-
   /** A static warp point: touching it instantly sends the ball back to the start, mid-roll. */
   protected buildPortal(pos: { x: number; y: number }) {
-    this.matter.add.circle(pos.x, pos.y, PORTAL_RADIUS, {
-      isStatic: true,
-      isSensor: true,
-      label: 'portal',
-    });
-    this.add.circle(pos.x, pos.y, PORTAL_RADIUS, PORTAL_FILL_COLOR).setStrokeStyle(PORTAL_STROKE_WIDTH, PORTAL_STROKE_COLOR).setDepth(3);
+    buildPortal(this, pos);
   }
 
   private spawnBall() {
@@ -523,10 +437,10 @@ export abstract class BaseLevelScene extends Phaser.Scene {
       if (this.ballOnBoardThisStep) {
         const speed = Math.hypot(this.ball.velocity.x, this.ball.velocity.y);
         if (!this.isRollSoundActive) {
-          this.startRollSound();
+          this.soundPlayer.startRollSound();
           this.isRollSoundActive = true;
         }
-        this.updateRollSound(speed);
+        this.soundPlayer.updateRollSound(speed);
       } else if (this.isRollSoundActive) {
         this.stopRollSound();
       }
@@ -898,84 +812,9 @@ export abstract class BaseLevelScene extends Phaser.Scene {
     });
   }
 
-  /** Synthesizes a short "sproing" — a falling pitch with a decaying wobble on top. */
-  private playSpringSound() {
-    const ctx = getAudioContext();
-    const now = ctx.currentTime;
-    const duration = 0.25;
-
-    const sampleRate = 200;
-    const sampleCount = Math.ceil(duration * sampleRate);
-    const curve = new Float32Array(sampleCount);
-    for (let i = 0; i < sampleCount; i++) {
-      const progress = i / (sampleCount - 1);
-      const basePitch = 500 - progress * 250;
-      const wobbleFreq = 18 - progress * 10;
-      const wobbleDepth = 120 * (1 - progress);
-      curve[i] = basePitch + Math.sin(progress * duration * wobbleFreq * Math.PI * 2) * wobbleDepth;
-    }
-
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueCurveAtTime(curve, now, duration);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + duration);
-  }
-
-  /** Starts the sustained rumble played while the ball is rolling on a board. */
-  private startRollSound() {
-    const ctx = getAudioContext();
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.value = ROLL_SOUND_MIN_FREQ;
-
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-
-    this.rollOscillator = osc;
-    this.rollGain = gain;
-  }
-
-  /** Re-pitches and re-levels the rolling rumble to track the ball's current speed. */
-  private updateRollSound(speed: number) {
-    if (!this.rollOscillator || !this.rollGain) {
-      return;
-    }
-    const t = Phaser.Math.Clamp(
-      (speed - ROLL_SOUND_MIN_SPEED) / (ROLL_SOUND_MAX_SPEED - ROLL_SOUND_MIN_SPEED),
-      0,
-      1
-    );
-    const freq = Phaser.Math.Linear(ROLL_SOUND_MIN_FREQ, ROLL_SOUND_MAX_FREQ, t);
-    const gainLevel = speed < ROLL_SOUND_MIN_SPEED ? 0 : Phaser.Math.Linear(ROLL_SOUND_MIN_GAIN, ROLL_SOUND_MAX_GAIN, t);
-
-    const now = getAudioContext().currentTime;
-    this.rollOscillator.frequency.setTargetAtTime(freq, now, 0.05);
-    this.rollGain.gain.setTargetAtTime(gainLevel, now, 0.05);
-  }
-
   private stopRollSound() {
     this.isRollSoundActive = false;
-    if (!this.rollOscillator || !this.rollGain) {
-      return;
-    }
-    const now = getAudioContext().currentTime;
-    this.rollGain.gain.setTargetAtTime(0, now, 0.05);
-    this.rollOscillator.stop(now + 0.2);
-    this.rollOscillator = undefined;
-    this.rollGain = undefined;
+    this.soundPlayer.stopRollSound();
   }
 
   private findElementAt(pos: Phaser.Math.Vector2): PlacedElement | null {
